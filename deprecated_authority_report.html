@@ -1,0 +1,151 @@
+<style type="text/css" media="screen">
+    body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        font-size: 16px;
+        text-align: left;
+    }
+    th, td {
+        padding: 12px;
+        border-bottom: 1px solid #ddd;
+    }
+    th {
+        background-color: #f2f2f2;
+    }
+    tr:hover {
+        background-color: #f5f5f5;
+        transition: background-color 0.3s ease;
+    }
+    button {
+        padding: 8px 16px;
+        cursor: pointer;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    button:hover {
+        background-color: #45a049;
+    }
+    #search-input {
+        width: 100%;
+        padding: 12px;
+        margin: 20px 0;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 16px;
+    }
+</style>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
+<script type="text/javascript">
+    $(document).ready(function() {
+        var systemAuthorities = {};
+        var userRoles = [];
+
+        $.getJSON('../api/authorities', function(data) {
+            systemAuthorities = data.systemAuthorities.reduce((obj, item) => {
+                obj[item.id] = item.name;
+                return obj;
+            }, {});
+            fetchUserRoles();
+        });
+
+        function fetchUserRoles() {
+            $.getJSON('../api/userRoles.json?fields=name,id,authorities', function(data) {
+                userRoles = data.userRoles;
+                createTable();
+            });
+        }
+        function createTable() {
+            $('#table-container').empty();
+            var table = '<table>';
+            table += '<thead><tr>';
+            table += '<th><input type="text" id="search-id" placeholder="Search ID"></th>';
+            table += '<th><input type="text" id="search-name" placeholder="Search Name"></th>';
+            table += '<th><input type="text" id="search-authority" placeholder="Search Authority"></th>';
+            table += '<th>Select</th>';
+            table += '</tr></thead><tbody>';
+            userRoles.forEach(function(userRole) {
+            userRole.authorities.forEach(function(authority) {
+                if (!systemAuthorities.hasOwnProperty(authority)) {
+                table += '<tr>';
+                table += '<td>' + userRole.id + '</td>';
+                table += '<td>' + userRole.name + '</td>';
+                table += '<td>' + authority + '</td>';
+                table += '<td><input type="checkbox" class="select-row" data-user-role-id="' + userRole.id + '" data-authority="' + authority + '"></td>';
+                table += '</tr>';
+                }
+            });
+            });
+            table += '</tbody></table>';
+            $('#table-container').append(table);
+            $('#table-container').append('<button id="remove-selected">Remove Selected</button>');
+
+            $('#search-id, #search-name, #search-authority').on('keyup', function() {
+            var idValue = $('#search-id').val().toLowerCase();
+            var nameValue = $('#search-name').val().toLowerCase();
+            var authorityValue = $('#search-authority').val().toLowerCase();
+            $('table tbody tr').filter(function() {
+                $(this).toggle(
+                $(this).children('td').eq(0).text().toLowerCase().indexOf(idValue) > -1 &&
+                $(this).children('td').eq(1).text().toLowerCase().indexOf(nameValue) > -1 &&
+                $(this).children('td').eq(2).text().toLowerCase().indexOf(authorityValue) > -1
+                );
+            });
+            });
+
+            $('#remove-selected').on('click', function() {
+            if ($('.select-row:checked').length === 0) {
+                alert('Please select at least one authority to remove.');
+                return;
+            }
+            var removePromises = [];
+            $('.select-row:checked').each(function() {
+                var userRoleId = $(this).data('user-role-id');
+                var authority = $(this).data('authority');
+                console.log('Removing authority: ' + authority + ' from user role: ' + userRoleId);
+                removePromises.push(removeAuthority(userRoleId, authority));
+            });
+
+            Promise.all(removePromises).then(() => {
+                alert('Selected authorities have been removed.');
+                fetchUserRoles();
+                window.location.reload();
+            }).catch(() => {
+                alert('Failed to remove some authorities.');
+            });
+        });
+        }
+
+        window.removeAuthority = function(userRoleId, authority) {
+            return new Promise((resolve, reject) => {
+                var payload = '[{"op": "remove", "path": "/authorities/' + authority + '"}]';
+                $.ajax({
+                    url: '../api/userRoles/' + userRoleId,
+                    type: 'PATCH',
+                    contentType: 'application/json-patch+json',
+                    data: payload,
+                    success: function() {
+                        console.log('Authority removed successfully.');
+                        resolve();
+                    },
+                    error: function() {
+                        reject();
+                    }
+                });
+            });
+        };
+    });
+</script>
+
+<div id="table-container">
+    <!-- HTML mark-up here -->
+</div>
